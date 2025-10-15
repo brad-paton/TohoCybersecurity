@@ -1,7 +1,15 @@
 ---
-title: "Ghoulio"
-format: html
-editor: visual
+format:
+  html:
+    code-fold: true
+#always_allow_html: true 
+self-contained: true
+execute: 
+  warning: false
+  message: false
+editor: 
+  markdown: 
+    wrap: 72
 ---
 
 ## 
