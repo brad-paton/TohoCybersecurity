@@ -16,9 +16,12 @@ editor:
 
 Did you know?
 
-Hackers are able to write scripts that can try up to 1 billion passwords per second?
+Hackers are able to write scripts that can try up to 1 billion passwords
+per second?
 
-This is why password strength is so important! Strong passwords containing upper and lower case letters, numbers, and special characters will be nearly impossible fro hackers to guess.
+This is why password strength is so important! Strong passwords
+containing upper and lower case letters, numbers, and special characters
+will be nearly impossible fro hackers to guess.
 
 $$
 Possibilities = PossibleCharacters^{Password Length}
