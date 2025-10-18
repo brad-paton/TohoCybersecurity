@@ -31,7 +31,7 @@ library(dplyr)
 library(fresh)
 library(lubridate)
 library(tidyr)
-
+library(htmltools)
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 ```
 
@@ -40,34 +40,16 @@ knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 SECONDS_PER_YEAR <- 60 * 60 * 24 * 365.25
 ATTEMPTS_PER_SECOND <- 1e9 
 
-# --- CORE LOGIC FUNCTION ---
+# --- CORE LOGIC FUNCTION (omitted for brevity) ---
 calculate_crack_time_raw <- function(length, use_lower, use_upper, use_numbers, use_special) {
-  # Constants must be available here or defined inside, 
-  # but since they are defined outside this function and only referenced later, this is fine.
-  
   alphabet_size <- 0
-  
-  if (use_lower) {
-    alphabet_size <- alphabet_size + 26
-  }
-  if (use_upper) {
-    alphabet_size <- alphabet_size + 26
-  }
-  if (use_numbers) {
-    alphabet_size <- alphabet_size + 10
-  }
-  # A reasonable set of common special characters
-  if (use_special) {
-    alphabet_size <- alphabet_size + 33
-  }
-
-  if (alphabet_size == 0) {
-    return(NA)
-  }
+  if (use_lower) { alphabet_size <- alphabet_size + 26 }
+  if (use_upper) { alphabet_size <- alphabet_size + 26 }
+  if (use_numbers) { alphabet_size <- alphabet_size + 10 }
+  if (use_special) { alphabet_size <- alphabet_size + 33 }
+  if (alphabet_size == 0) { return(NA) }
 
   log10_combinations <- length * log10(alphabet_size)
-  
-  # Reference constants defined outside the function
   log10_rate <- log10(ATTEMPTS_PER_SECOND) + log10(SECONDS_PER_YEAR)
   log10_crack_years <- log10_combinations - log10_rate
   
@@ -78,39 +60,27 @@ calculate_crack_time_raw <- function(length, use_lower, use_upper, use_numbers, 
 
 ```{r,include=FALSE}
 
-# --- 1. GENERATE ALL SCENARIOS (Enforce Lowercase L=TRUE) ---
+# --- 1. GENERATE ALL SCENARIOS ---
 lengths <- 4:32
-sets <- expand_grid( # <--- Uses the tidyr::expand_grid function
-  L = c(TRUE),            # Lowercase is MANDATORY for all rows
-  U = c(TRUE, FALSE), 
-  N = c(TRUE, FALSE), 
-  S = c(TRUE, FALSE)
+sets <- expand_grid(
+  L = c(TRUE), U = c(TRUE, FALSE), N = c(TRUE, FALSE), S = c(TRUE, FALSE)
 ) %>%
   mutate(
-    Char_Set = paste0(
-      if_else(L, "L", ""), if_else(U, "U", ""), 
-      if_else(N, "N", ""), if_else(S, "S", "")
-    ),
+    Char_Set = paste0(if_else(L, "L", ""), if_else(U, "U", ""), if_else(N, "N", ""), if_else(S, "S", "")),
     Char_Desc = case_when(
       Char_Set == "L" ~ "Lowercase Only (26)",
-      Char_Set == "LU" ~ "Lower + Upper (52)",
       Char_Set == "LUNS" ~ "All Four (95)",
-      Char_Set == "N" ~ "Numbers Only (10)",
-      .default = paste0("Custom (", 
-                        26*L + 26*U + 10*N + 33*S, " chars)")
+      .default = paste0("Custom (", 26*L + 26*U + 10*N + 33*S, " chars)")
     )
   )
 
-# --- 2. COMBINE AND CALCULATE & SORT FOR DEFAULT ---
+# --- 2. COMBINE AND CALCULATE & SORT ---
 full_data <- sets %>%
-  tidyr::expand_grid(Length = lengths) %>% # <--- Uses the tidyr::expand_grid function
+  tidyr::expand_grid(Length = lengths) %>%
   rowwise() %>%
-  mutate(
-    Crack_Years = calculate_crack_time_raw(Length, L, U, N, S)
-  ) %>%
+  mutate(Crack_Years = calculate_crack_time_raw(Length, L, U, N, S)) %>%
   ungroup() %>%
   mutate(
-    # Recalculate alphabet size based on L, U, N, S columns
     Alphabet_Size = 26*L + 26*U + 10*N + 33*S,
     Combinations = round(10^(Length * log10(Alphabet_Size)), 0),
     Formatted_Time = if_else(
@@ -120,16 +90,10 @@ full_data <- sets %>%
     )
   ) %>%
   filter(Alphabet_Size > 0) %>%
-  # --- SORT TO MAKE DESIRED DEFAULTS APPEAR FIRST ---
-  # This makes the initial selection robust
-  arrange(
-    # Sort by Length so a low, common value like 8 appears early (ascending)
-    Length,
-    # Sort by inclusion (TRUE=1, FALSE=0) descending so TRUE appears first
-    desc(U), 
-    desc(N), 
-    desc(S)
-  )
+  # --- NEW: RELOCATE TARGET COLUMN TO INDEX 0 ---
+  relocate(Formatted_Time) %>% 
+  # Sort for robust initial state (Length 4, minimum characters)
+  arrange(Length, U, N, S)
 
 # --- 3. CREATE SHARED DATA OBJECT ---
 shared_data <- SharedData$new(full_data)
@@ -173,6 +137,42 @@ filter_select(
   sharedData = shared_data, 
   group = ~S, 
   multiple = FALSE
+)
+```
+
+```{r}
+htmltools::tagList(
+  htmltools::tags$h3("Estimated Time to Crack (at 1 Billion Attempts/sec):"),
+  
+  datatable(
+    shared_data, 
+    options = list(
+      dom = 't',              # Only show the table body
+      pageLength = 1,         # Show only the single filtered row
+      ordering = FALSE,       # Disable sorting
+      searching = FALSE,      # Disable search
+      columnDefs = list(
+        # Hide ALL columns except the one we want
+        list(visible = FALSE, targets = '_all'), 
+        # EXCEPT for the Formatted_Time column, which is now index 0!
+        list(visible = TRUE, targets = 0) 
+      ),
+      # Inject custom CSS for styling
+      initComplete = htmlwidgets::JS(
+        "function(settings, json) {",
+        "  $(this.api().table().container()).css({",
+        "    'font-size': '2.5em', ", 
+        "    'font-weight': 'bold', ", 
+        "    'color': '#FF8C00',",
+        "    'text-align': 'center'",
+        "  });",
+        "  // Hide the table header completely",
+        "  $(this.api().table().header()).css('display', 'none');",
+        "}"
+      )
+    ),
+    colnames = ""
+  )
 )
 ```
 
