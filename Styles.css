@@ -1,0 +1,65 @@
+/* --- Global Dark Theme --- */
+body {
+    background-color: #343434 !important; /* content_bg */
+    color: #FFFFFF !important;            /* fg */
+}
+
+/* --- Controls Panel Styling --- */
+.controls-panel {
+    background-color: #454545; /* box_bg */
+    padding: 20px;
+    border-radius: 8px;
+    border: 1px solid #FF8C00; /* Orange Border */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* --- Input Labels and Text --- */
+label {
+    color: #FFFFFF !important;
+    font-weight: bold;
+}
+
+/* --- Slider Accent Color (Orange) --- */
+.irs--shiny .irs-bar,
+.irs--shiny .irs-from,
+.irs--shiny .irs-to,
+.irs--shiny .irs-single {
+    background: #FF8C00 !important;
+    border-color: #FF8C00 !important;
+}
+
+/* --- Dropdown/Select Input Focus and Hover --- */
+.selectize-input.focus,
+.selectize-input.dropdown-active {
+    border-color: #FF8C00 !important;
+    box-shadow: 0 0 5px #FF8C00;
+}
+
+/* --- Headings --- */
+h1, h2, h3, h4 {
+    color: #FFFFFF;
+}
+
+/* --- Crosstalk Filter Containers --- */
+.form-group {
+    margin-bottom: 20px;
+    background-color: transparent !important; /* Ensure filters blend into the panel */
+}
+
+/* --- DT Table Dark Styling --- */
+.dataTables_wrapper .dataTables_filter input,
+.dataTables_wrapper .dataTables_length select,
+.dataTables_wrapper .dataTables_info,
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+    color: #FFFFFF !important;
+}
+table.dataTable th,
+table.dataTable td {
+    border-color: #666 !important;
+    background-color: #454545 !important;
+    color: #FFFFFF !important;
+}
+table.dataTable thead th {
+    background-color: #212121 !important; /* Darker header */
+    color: #FF8C00 !important;          /* Orange text for headers */
+}
