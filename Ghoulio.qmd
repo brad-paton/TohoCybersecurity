@@ -2,7 +2,6 @@
 format:
   html:
     code-fold: true
-#always_allow_html: true 
 self-contained: true
 execute: 
   warning: false
@@ -10,11 +9,8 @@ execute:
 editor: 
   markdown: 
     wrap: 72
-format: html
 server: shiny
 ---
-
-## 
 
 Did you know?
 
@@ -25,10 +21,6 @@ This is why password strength is so important! Strong passwords containing upper
 $$
 Possibilities = PossibleCharacters^{Password Length}
 $$
-
-```{r}
-(94^10/1000000000)/3600/24/365
-```
 
 ```{r}
 library(shiny)
