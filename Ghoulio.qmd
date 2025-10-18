@@ -1,15 +1,15 @@
 ---
-format:
-  html:
-    code-fold: true
+title: "Ghoulio Password Challenge"
 self-contained: true
-execute: 
-  warning: false
-  message: false
 editor: 
   markdown: 
     wrap: 72
-server: shiny
+format: 
+  html:
+    css: styles.css
+    code-fold: true
+    toc: true
+    toc-depth: 2
 ---
 
 Did you know?
@@ -22,46 +22,29 @@ $$
 Possibilities = PossibleCharacters^{Password Length}
 $$
 
-```{r}
-library(shiny)
-library(shinydashboard)
-library(fresh)       
+```{r,include=FALSE}
+# Load necessary libraries
+library(crosstalk)
+library(plotly)
+library(DT)
 library(dplyr)
+library(fresh)
 library(lubridate)
+library(tidyr)
 
-# --- 1. DEFINE THEME WITH `fresh` ---
-# A deep, dark background color
-DARK_BG <- "#212121" 
-# A vibrant orange accent color (e.g., traffic cone orange)
-ORANGE_ACCENT <- "#FF8C00" 
-
-my_theme <- create_theme(
-  # Set the overall AdminLTE skin to 'dark' to get the dark sidebar/header look
-  adminlte_color(
-    # The 'light-blue' status is the default primary color in shinydashboard, 
-    # so we overwrite it with our orange accent.
-    light_blue = ORANGE_ACCENT, 
-    # The 'blue' status is used for the header/sidebar skin
-    blue = DARK_BG 
-  ),
-  # Customize the main sidebar for a consistent dark look
-  adminlte_sidebar(
-    dark_bg = DARK_BG,
-    dark_hover_bg = ORANGE_ACCENT,
-    dark_color = "#FFFFFF" # White text color
-  ),
-  # Customize the main body background
-  adminlte_global(
-    content_bg = "#343434",  # Slightly lighter dark grey for the body
-    box_bg = "#454545"          # Default foreground (text) color
-  )
-)
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 ```
 
-```{r}
-# --- CORE LOGIC FUNCTION 
-calculate_crack_time <- function(length, use_lower, use_upper, use_numbers, use_special) {
-  # 1. Determine the size of the character set (Alphabet Size)
+```{r,include=FALSE}
+# --- Define constants globally for the calculation block ---
+SECONDS_PER_YEAR <- 60 * 60 * 24 * 365.25
+ATTEMPTS_PER_SECOND <- 1e9 
+
+# --- CORE LOGIC FUNCTION ---
+calculate_crack_time_raw <- function(length, use_lower, use_upper, use_numbers, use_special) {
+  # Constants must be available here or defined inside, 
+  # but since they are defined outside this function and only referenced later, this is fine.
+  
   alphabet_size <- 0
   
   if (use_lower) {
@@ -79,139 +62,117 @@ calculate_crack_time <- function(length, use_lower, use_upper, use_numbers, use_
   }
 
   if (alphabet_size == 0) {
-    return(list(combinations = 0, crack_years = 0, crack_formatted = "N/A - No characters selected"))
+    return(NA)
   }
 
-  # 2. Calculate Total Possible Combinations (using log for large numbers)
   log10_combinations <- length * log10(alphabet_size)
   
-  ATTEMPTS_PER_SECOND <- 1e9 
-  SECONDS_PER_YEAR <- 60 * 60 * 24 * 365.25
-
-  # 3. Calculate Time to Crack (in years)
+  # Reference constants defined outside the function
   log10_rate <- log10(ATTEMPTS_PER_SECOND) + log10(SECONDS_PER_YEAR)
   log10_crack_years <- log10_combinations - log10_rate
   
-  crack_years <- 10^log10_crack_years
-
-  # 4. Format the Output
-  combinations_formatted <- format(10^log10_combinations, scientific = TRUE, digits = 3)
-  
-  if (crack_years < 1e-6) {
-    crack_formatted <- paste(round(crack_years * SECONDS_PER_YEAR * 1000, 2), "milliseconds")
-  } else if (crack_years < 1) {
-    crack_seconds <- crack_years * SECONDS_PER_YEAR
-    crack_duration <- seconds_to_period(crack_seconds)
-    crack_formatted <- format(crack_duration, units = c("years", "days", "hours", "minutes", "seconds"))
-  } else {
-    crack_formatted <- paste(format(crack_years, scientific = TRUE, digits = 3), "years")
-  }
-
-  return(list(combinations = combinations_formatted, crack_years = crack_years, crack_formatted = crack_formatted))
+  return(10^log10_crack_years)
 }
 
 ```
 
-```{r}
-# --- SHINY UI ---
-ui <- dashboardPage(
-  # Set the skin to 'blue' to trigger the dark sidebar/header defined by 'blue' in adminlte_color
-  dashboardHeader(title = "Password Strength Calculator 🔐"), 
-  dashboardSidebar(
-    menuItem("Calculator", tabName = "calculator", icon = icon("key"))
-  ),
-  dashboardBody(
-    # --- IMPORTANT: APPLY THE THEME HERE ---
-    use_theme(my_theme), 
-    
-    tabItems(
-      tabItem(tabName = "calculator",
-              h2("Brute-Force Crack Time Estimator"),
-              fluidRow(
-                # INPUT Panel
-                box(
-                  title = "Password Parameters", 
-                  # Set status to the custom-colored 'primary' which is now Orange
-                  status = "primary", solidHeader = TRUE,
-                  sliderInput("length", "Password Length:", min = 4, max = 32, value = 12, step = 1),
-                  checkboxGroupInput("char_set", "Include Characters:",
-                                     choices = list("Lowercase Letters (a-z)" = "lower",
-                                                    "Uppercase Letters (A-Z)" = "upper",
-                                                    "Numbers (0-9)" = "numbers",
-                                                    "Special Characters (~!@#$)" = "special"),
-                                     selected = c("lower", "upper", "numbers", "special")
-                  )
-                ),
-                
-                # OUTPUT Panel
-                box(
-                  title = "Results (1 Billion Attempts/sec)", 
-                  status = "warning", solidHeader = TRUE, # Use a neutral status color for the box title
-                  
-                  # The valueBox status="primary" will now be Orange
-                  valueBoxOutput("combinationsBox"),
-                  
-                  # The valueBox status="success" will now be a different color (still dark themed)
-                  valueBoxOutput("crackTimeBox"),
-                  
-                  h4("Detailed Crack Time:"),
-                  verbatimTextOutput("detailedCrackTime")
-                )
-              )
-      )
+```{r,include=FALSE}
+
+# --- 1. GENERATE ALL SCENARIOS (Enforce Lowercase L=TRUE) ---
+lengths <- 4:32
+sets <- expand_grid( # <--- Uses the tidyr::expand_grid function
+  L = c(TRUE),            # Lowercase is MANDATORY for all rows
+  U = c(TRUE, FALSE), 
+  N = c(TRUE, FALSE), 
+  S = c(TRUE, FALSE)
+) %>%
+  mutate(
+    Char_Set = paste0(
+      if_else(L, "L", ""), if_else(U, "U", ""), 
+      if_else(N, "N", ""), if_else(S, "S", "")
+    ),
+    Char_Desc = case_when(
+      Char_Set == "L" ~ "Lowercase Only (26)",
+      Char_Set == "LU" ~ "Lower + Upper (52)",
+      Char_Set == "LUNS" ~ "All Four (95)",
+      Char_Set == "N" ~ "Numbers Only (10)",
+      .default = paste0("Custom (", 
+                        26*L + 26*U + 10*N + 33*S, " chars)")
     )
   )
+
+# --- 2. COMBINE AND CALCULATE & SORT FOR DEFAULT ---
+full_data <- sets %>%
+  tidyr::expand_grid(Length = lengths) %>% # <--- Uses the tidyr::expand_grid function
+  rowwise() %>%
+  mutate(
+    Crack_Years = calculate_crack_time_raw(Length, L, U, N, S)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    # Recalculate alphabet size based on L, U, N, S columns
+    Alphabet_Size = 26*L + 26*U + 10*N + 33*S,
+    Combinations = round(10^(Length * log10(Alphabet_Size)), 0),
+    Formatted_Time = if_else(
+      Crack_Years < 1,
+      as.character(seconds_to_period(Crack_Years * SECONDS_PER_YEAR)),
+      paste0(format(Crack_Years, scientific = TRUE, digits = 3), " years")
+    )
+  ) %>%
+  filter(Alphabet_Size > 0) %>%
+  # --- SORT TO MAKE DESIRED DEFAULTS APPEAR FIRST ---
+  # This makes the initial selection robust
+  arrange(
+    # Sort by Length so a low, common value like 8 appears early (ascending)
+    Length,
+    # Sort by inclusion (TRUE=1, FALSE=0) descending so TRUE appears first
+    desc(U), 
+    desc(N), 
+    desc(S)
+  )
+
+# --- 3. CREATE SHARED DATA OBJECT ---
+shared_data <- SharedData$new(full_data)
+
+```
+Use the controls below to select the password characteristics. The chart and data table will update instantly without a server.
+
+<div class="controls-panel">
+```{r,echo=FALSE}
+# --- INPUT 1: Password Length ---
+filter_select(
+  id = "length_select", 
+  label = "1. Select Password Length:", 
+  sharedData = shared_data, 
+  group = ~Length, 
+  multiple = FALSE
+)
+
+# --- INPUT 2: Uppercase Toggle ---
+filter_select(
+  id = "case_toggle", 
+  label = "2. Include Uppercase (A-Z)?:", 
+  sharedData = shared_data, 
+  group = ~U, 
+  multiple = FALSE
+)
+
+# --- INPUT 3: Numbers Toggle ---
+filter_select(
+  id = "numbers_toggle", 
+  label = "3. Include Numbers (0-9):", 
+  sharedData = shared_data, 
+  group = ~N, 
+  multiple = FALSE
+)
+
+# --- INPUT 4: Special Characters Toggle ---
+filter_select(
+  id = "special_toggle", 
+  label = "4. Include Special Characters (!@#$%...):", 
+  sharedData = shared_data, 
+  group = ~S, 
+  multiple = FALSE
 )
 ```
 
-```{r}
-# --- SHINY SERVER ---
-server <- function(input, output) {
-  
-  crack_result <- reactive({
-    len <- input$length
-    use_lower <- "lower" %in% input$char_set
-    use_upper <- "upper" %in% input$char_set
-    use_numbers <- "numbers" %in% input$char_set
-    use_special <- "special" %in% input$char_set
-    
-    calculate_crack_time(len, use_lower, use_upper, use_numbers, use_special)
-  })
-  
-  # Output: Total Combinations
-  output$combinationsBox <- renderValueBox({
-    result <- crack_result()
-    valueBox(
-      result$combinations, 
-      "Total Possible Passwords", 
-      icon = icon("puzzle-piece"),
-      # This 'primary' color is mapped to our ORANGE_ACCENT in fresh
-      color = "light-blue" 
-    )
-  })
-  
-  # Output: Formatted Crack Time
-  output$crackTimeBox <- renderValueBox({
-    result <- crack_result()
-    valueBox(
-      result$crack_formatted, 
-      "Time to Crack", 
-      icon = icon("hourglass-half"),
-      # This 'success' color is a default dark theme color, but still looks good
-      color = "green"
-    )
-  })
-  
-  # Output: Detailed Result Text
-  output$detailedCrackTime <- renderPrint({
-    result <- crack_result()
-    cat(paste("Total Combinations:", result$combinations, "\n"))
-    cat(paste("Time to Crack:", result$crack_formatted, "\n"))
-  })
-}
-```
-
-```{r}
-# --- Run the application ---
-shinyApp(ui = ui, server = server)
-```
