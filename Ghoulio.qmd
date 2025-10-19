@@ -34,13 +34,12 @@ library(tidyr)
 library(htmltools)
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 ```
-
-```{r,include=FALSE}
+```{r}
 # --- Define constants globally for the calculation block ---
 SECONDS_PER_YEAR <- 60 * 60 * 24 * 365.25
 ATTEMPTS_PER_SECOND <- 1e9 
 
-# --- CORE LOGIC FUNCTION (omitted for brevity) ---
+# --- CORE LOGIC FUNCTION ---
 calculate_crack_time_raw <- function(length, use_lower, use_upper, use_numbers, use_special) {
   alphabet_size <- 0
   if (use_lower) { alphabet_size <- alphabet_size + 26 }
@@ -56,11 +55,7 @@ calculate_crack_time_raw <- function(length, use_lower, use_upper, use_numbers, 
   return(10^log10_crack_years)
 }
 
-```
-
-```{r,include=FALSE}
-
-# --- 1. GENERATE ALL SCENARIOS ---
+# --- 1. GENERATE ALL SCENARIOS (L=TRUE enforced) ---
 lengths <- 4:32
 sets <- expand_grid(
   L = c(TRUE), U = c(TRUE, FALSE), N = c(TRUE, FALSE), S = c(TRUE, FALSE)
@@ -78,10 +73,13 @@ sets <- expand_grid(
 full_data <- sets %>%
   tidyr::expand_grid(Length = lengths) %>%
   rowwise() %>%
-  mutate(Crack_Years = calculate_crack_time_raw(Length, L, U, N, S)) %>%
-  ungroup() %>%
+  # STEP 1: Calculate Crack_Years and Alphabet_Size
   mutate(
-    Alphabet_Size = 26*L + 26*U + 10*N + 33*S,
+    Crack_Years = calculate_crack_time_raw(Length, L, U, N, S),
+    Alphabet_Size = 26*L + 26*U + 10*N + 33*S
+  ) %>%
+  # STEP 2: Calculate Combinations and Formatted_Time, relying on Alphabet_Size
+  mutate(
     Combinations = round(10^(Length * log10(Alphabet_Size)), 0),
     Formatted_Time = if_else(
       Crack_Years < 1,
@@ -89,90 +87,62 @@ full_data <- sets %>%
       paste0(format(Crack_Years, scientific = TRUE, digits = 3), " years")
     )
   ) %>%
+  ungroup() %>%
   filter(Alphabet_Size > 0) %>%
-  # --- NEW: RELOCATE TARGET COLUMN TO INDEX 0 ---
-  relocate(Formatted_Time) %>% 
-  # Sort for robust initial state (Length 4, minimum characters)
-  arrange(Length, U, N, S)
-
+  
+  # Filter the data to the desired default state (Length >= 6, U=FALSE, N=FALSE, S=FALSE)
+  filter(
+    Length >= 6,
+    U == FALSE,
+    N == FALSE,
+    S == FALSE
+  ) %>%
+  
+  # Select the columns needed for the final output table and the single slider
+  select(Formatted_Time, Combinations, Length, U, N, S) %>%
+  
+  # Final rename
+  rename(
+    "Years to Crack Password" = Formatted_Time,
+    "Password Combinations" = Combinations
+  )
+  
 # --- 3. CREATE SHARED DATA OBJECT ---
+# The shared_data object only contains the pre-filtered set (L=TRUE, U=F, N=F, S=F, Length>=6)
 shared_data <- SharedData$new(full_data)
 
-```
-Use the controls below to select the password characteristics. The chart and data table will update instantly without a server.
+# Create the placeholder for the initial default filter values (Length = 6)
+# This uses the original column name 'Length' which still exists in 'full_data'
+default_filter_data <- full_data %>%
+  filter(Length == 6)
 
-<div class="controls-panel">
-```{r,echo=FALSE}
-# --- INPUT 1: Password Length ---
-filter_select(
-  id = "length_select", 
-  label = "1. Select Password Length:", 
-  sharedData = shared_data, 
-  group = ~Length, 
-  multiple = FALSE
-)
-
-# --- INPUT 2: Uppercase Toggle ---
-filter_select(
-  id = "case_toggle", 
-  label = "2. Include Uppercase (A-Z)?:", 
-  sharedData = shared_data, 
-  group = ~U, 
-  multiple = FALSE
-)
-
-# --- INPUT 3: Numbers Toggle ---
-filter_select(
-  id = "numbers_toggle", 
-  label = "3. Include Numbers (0-9):", 
-  sharedData = shared_data, 
-  group = ~N, 
-  multiple = FALSE
-)
-
-# --- INPUT 4: Special Characters Toggle ---
-filter_select(
-  id = "special_toggle", 
-  label = "4. Include Special Characters (!@#$%...):", 
-  sharedData = shared_data, 
-  group = ~S, 
-  multiple = FALSE
-)
 ```
 
 ```{r}
-htmltools::tagList(
-  htmltools::tags$h3("Estimated Time to Crack (at 1 Billion Attempts/sec):"),
-  
-  datatable(
-    shared_data, 
-    options = list(
-      dom = 't',              # Only show the table body
-      pageLength = 1,         # Show only the single filtered row
-      ordering = FALSE,       # Disable sorting
-      searching = FALSE,      # Disable search
-      columnDefs = list(
-        # Hide ALL columns except the one we want
-        list(visible = FALSE, targets = '_all'), 
-        # EXCEPT for the Formatted_Time column, which is now index 0!
-        list(visible = TRUE, targets = 0) 
-      ),
-      # Inject custom CSS for styling
-      initComplete = htmlwidgets::JS(
-        "function(settings, json) {",
-        "  $(this.api().table().container()).css({",
-        "    'font-size': '2.5em', ", 
-        "    'font-weight': 'bold', ", 
-        "    'color': '#FF8C00',",
-        "    'text-align': 'center'",
-        "  });",
-        "  // Hide the table header completely",
-        "  $(this.api().table().header()).css('display', 'none');",
-        "}"
-      )
-    ),
-    colnames = ""
+# --- INPUT 1: Password Length (SLIDER) ---
+filter_slider(
+  id = "length_slider", 
+  label = "1. Select Password Length:", 
+  sharedData = shared_data, 
+  # CRITICAL FIX: Use 'column' instead of 'group' (most stable argument)
+  column = ~Length
+)
+
+```
+
+
+
+
+
+```{r,include=TRUE,echo=FALSE}
+# Display the entire shared data without complex styling or column hiding
+datatable(
+  shared_data, 
+  options = list(
+    pageLength = 5, # Show 5 rows for testing
+    dom = 't'       # Still hides controls, but shows more of the table
   )
 )
 ```
+
 
