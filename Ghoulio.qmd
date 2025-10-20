@@ -1,5 +1,4 @@
 ---
-title: "Ghoulio Password Challenge"
 self-contained: true
 editor: 
   markdown: 
@@ -11,6 +10,34 @@ format:
     toc: true
     toc-depth: 2
 ---
+
+
+<style>
+  .halloween-header {
+    background-color: #FF6600; /* Bright Orange */
+    color: #000000; /* Black text */
+    padding: 15px; /* Slightly smaller padding */
+    text-align: center;
+    /* Changed to a non-bold font family */
+    font-family: Arial, sans-serif; 
+    border-bottom: 5px solid #000000;
+    margin-bottom: 20px;
+  }
+  .halloween-header h1 {
+    margin: 0;
+    /* Reduced font size */
+    font-size: 1.8em; 
+    /* Remove the strong weight often associated with h1 */
+    font-weight: normal; 
+    text-transform: none; /* Keep original casing */
+    letter-spacing: 1px;
+  }
+</style>
+
+<div class="halloween-header">
+  <h1>Safety & Risk's Password Calculator</h1>
+</div>
+
 
 Did you know?
 
@@ -32,12 +59,16 @@ library(fresh)
 library(lubridate)
 library(tidyr)
 library(htmltools)
+
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 ```
+
 ```{r}
 # --- Define constants globally for the calculation block ---
 SECONDS_PER_YEAR <- 60 * 60 * 24 * 365.25
 ATTEMPTS_PER_SECOND <- 1e9 
+# Define the threshold for switching to scientific notation (1 trillion)
+SCIENTIFIC_THRESHOLD <- 1e12 
 
 # --- CORE LOGIC FUNCTION ---
 calculate_crack_time_raw <- function(length, use_lower, use_upper, use_numbers, use_special) {
@@ -78,13 +109,22 @@ full_data <- sets %>%
     Crack_Years = calculate_crack_time_raw(Length, L, U, N, S),
     Alphabet_Size = 26*L + 26*U + 10*N + 33*S
   ) %>%
-  # STEP 2: Calculate Combinations and Formatted_Time, relying on Alphabet_Size
+  # STEP 2: Calculate Combinations and Formatted_Time
   mutate(
-    Combinations = round(10^(Length * log10(Alphabet_Size)), 0),
+    Combinations_Raw = round(10^(Length * log10(Alphabet_Size)), 0),
+    
+    # Conditional formatting for Combinations
+    Combinations = if_else(
+      Combinations_Raw >= SCIENTIFIC_THRESHOLD,
+      format(Combinations_Raw, scientific = TRUE, digits = 3),
+      format(Combinations_Raw, big.mark = ",", trim = TRUE, scientific = FALSE)
+    ),
+    
+    # Conditional formatting for Time
     Formatted_Time = if_else(
-      Crack_Years < 1,
-      as.character(seconds_to_period(Crack_Years * SECONDS_PER_YEAR)),
-      paste0(format(Crack_Years, scientific = TRUE, digits = 3), " years")
+      Crack_Years >= SCIENTIFIC_THRESHOLD,
+      paste0(format(Crack_Years, scientific = TRUE, digits = 3), " years"),
+      paste0(format(Crack_Years, big.mark = ",", trim = TRUE, scientific = FALSE, digits = 3), " years")
     )
   ) %>%
   ungroup() %>%
@@ -98,23 +138,31 @@ full_data <- sets %>%
     S == FALSE
   ) %>%
   
-  # Select the columns needed for the final output table and the single slider
+  # Select columns and perform the required renames first
   select(Formatted_Time, Combinations, Length, U, N, S) %>%
   
-  # Final rename
+  # CRITICAL: Rename Length and the boolean flags (U, N, S)
+  rename(
+    "Password Length" = Length,
+    "Uppercase" = U,
+    "Numbers" = N,
+    "Special Characters" = S
+  ) %>%
+  
+  # Final rename for the output fields
   rename(
     "Years to Crack Password" = Formatted_Time,
     "Password Combinations" = Combinations
   )
   
 # --- 3. CREATE SHARED DATA OBJECT ---
-# The shared_data object only contains the pre-filtered set (L=TRUE, U=F, N=F, S=F, Length>=6)
+# The shared_data object only contains the pre-filtered set
 shared_data <- SharedData$new(full_data)
 
 # Create the placeholder for the initial default filter values (Length = 6)
-# This uses the original column name 'Length' which still exists in 'full_data'
+# Note: The 'Password Length' column is now being filtered here.
 default_filter_data <- full_data %>%
-  filter(Length == 6)
+  filter(`Password Length` == 6)
 
 ```
 
@@ -124,8 +172,8 @@ filter_slider(
   id = "length_slider", 
   label = "1. Select Password Length:", 
   sharedData = shared_data, 
-  # CRITICAL FIX: Use 'column' instead of 'group' (most stable argument)
-  column = ~Length
+  # CRITICAL FIX: Use the new column name, enclosed in backticks
+  column = ~`Password Length` 
 )
 
 ```
