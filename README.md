@@ -1,9 +1,8 @@
 # TohoCybersecurity
-**Overall To-Do**
-- Decide if we want to render to a slideshow or a lot of pages (a lot of pages would be a different .qmd for each page where a slideshow would be one file but less flexibility on use)
-- Design interface (Julio, idk how. you do it if you dont mind) - orange header with tabs for each challenge, toho logo, black background for body, white text for body
-- Need to finalize names for each person
-- Create image logo for each person using AI and save to repo
+
+Welcome to the Password Fortification Calculator! This interactive tool shows you exactly how strong your passwords are against hackers.
+
+It reveals the huge, exponential difference that simple choices—like adding one extra character or a capital letter—can make. It's built on the principle that more variety and more length means more security:
 
 ## Home page
 - introduction on top
